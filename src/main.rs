@@ -37,6 +37,10 @@ use axum::extract::ws::CloseFrame;
 
 //allows to split the websocket stream into separate TX and RX branches
 use futures::{sink::SinkExt, stream::StreamExt};
+use tracing::log::info;
+use crate::handlers::websocket_actor::OrderSessionHandler;
+
+static HANDLERS: once_cell::sync::OnceCell<dashmap::DashMap<&str, OrderSessionHandler>> = once_cell::sync::OnceCell::new();
 
 #[tokio::main]
 async fn main() {
@@ -53,6 +57,8 @@ async fn main() {
     // build our application with some routes
     let app = Router::new()
         .route("/ws", get(ws_handler))
+        .route("/ws/courier", get(courier_ws_handler))
+        .route("/ws/customer", get(customer_ws_handler))
         // logging so we can see whats going on
         .layer(
             TraceLayer::new_for_http()
@@ -60,12 +66,45 @@ async fn main() {
         );
 
     // run it with hyper
-    tracing::debug!("listening on {}", "0.0.0.0:3000");
+    info!("listening on {}", "0.0.0.0:3000");
+
+    HANDLERS.set(dashmap::DashMap::from_iter
+        ([("1", OrderSessionHandler::new("1".to_string()))]))
+        .map_err(|_| "Failed to initialize handlers")
+        .unwrap();
 
     Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .unwrap();
+}
+
+async fn courier_ws_handler(
+    ws: WebSocketUpgrade,
+    user_agent: Option<TypedHeader<headers::UserAgent>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| {
+        HANDLERS.get().unwrap()
+            .get_mut("1")
+            .unwrap()
+            .connect_courier(socket);
+        futures_util::future::ready(())
+    })
+}
+
+async fn customer_ws_handler(
+    ws: WebSocketUpgrade,
+    user_agent: Option<TypedHeader<headers::UserAgent>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| {
+        HANDLERS.get().unwrap()
+            .get_mut("1")
+            .unwrap()
+            .connect_customer(socket);
+        futures_util::future::ready(())
+    })
 }
 
 /// The handler for the HTTP request (this gets called when the HTTP GET lands at the start
