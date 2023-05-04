@@ -1,6 +1,6 @@
 use tokio::select;
 use tokio::sync::{mpsc, watch};
-use tracing::log::{error, info};
+use tracing::log::{debug, error, info};
 use crate::handlers::events::{Command, StateKind};
 use crate::handlers::handler::{UpdateHandler, WebSocketUpdateHandler};
 use crate::models::updates::{OrderDelivered, OrderCreated, OrderInTransit};
@@ -65,7 +65,7 @@ impl EventActor {
                     }
                 }
                 None => {
-                    info!("Channel closed");
+                    debug!("Channel closed");
                     return;
                 }
             }
@@ -83,7 +83,7 @@ impl EventActor {
     }
 
     fn transition(&mut self, tr: StateKind) {
-        info!("Transitioning to {:?}", tr);
+        debug!("Transitioning to {:?}", tr);
         let new_handler: Box<dyn UpdateHandler<String> + Sync + Send> = match &tr {
             StateKind::OrderCreated => Box::new(WebSocketUpdateHandler::<OrderCreated>::new()),
             StateKind::OrderInTransit => Box::new(WebSocketUpdateHandler::<OrderInTransit>::new()),

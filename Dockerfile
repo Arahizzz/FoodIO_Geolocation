@@ -14,7 +14,7 @@ COPY . .
 RUN cargo build --release --bin LocationService
 
 # We do not need the Rust toolchain to run the binary!
-FROM debian:buster-slim AS runtime
+FROM debian:bullseye AS runtime
 WORKDIR /app
 COPY --from=builder /app/target/release/LocationService /usr/local/bin
 ENTRYPOINT ["/usr/local/bin/LocationService"]

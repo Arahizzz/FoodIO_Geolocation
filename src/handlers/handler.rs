@@ -1,5 +1,4 @@
 use axum::async_trait;
-use tracing::log::error;
 use crate::handlers::events::{Command, TypedCommand};
 use crate::handlers::processor::{UpdateProcessor, WebSocketUpdateProcessor};
 use crate::models::updates::{OrderState, OrderCreated, OrderInTransit, OrderDelivered};

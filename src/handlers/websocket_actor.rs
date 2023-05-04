@@ -1,8 +1,8 @@
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, SemaphorePermit, watch};
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
 use tokio::task::JoinHandle;
-use tracing::log::info;
+use tracing::log::{debug, info};
 use crate::handlers::event_actor::EventActor;
 
 struct AutoCancelTask<T>(pub JoinHandle<T>);
@@ -15,6 +15,8 @@ impl<T> Drop for AutoCancelTask<T> {
 
 pub struct OrderSessionHandler {
     order_id: String,
+    customer_id: String,
+    courier_id: String,
     customer: Option<AutoCancelTask<()>>,
     courier: Option<AutoCancelTask<()>>,
     handler: AutoCancelTask<()>,
@@ -26,7 +28,7 @@ pub struct OrderSessionHandler {
 }
 
 impl OrderSessionHandler {
-    pub fn new(order_id: String) -> Self {
+    pub fn new(order_id: String, customer_id: String, courier_id: String, permit: SemaphorePermit<'static>) -> Self {
         let (inbound_customer, inbound_customer_recv) = mpsc::channel(8);
         let (inbound_courier, inbound_courier_recv) = mpsc::channel(8);
         let (outbound_customer_send, outbound_customer) = watch::channel(String::new());
@@ -40,10 +42,15 @@ impl OrderSessionHandler {
 
         Self {
             order_id,
+            customer_id,
+            courier_id,
             customer: None,
             courier: None,
             // update_handler: operator,
-            handler: AutoCancelTask(tokio::spawn(async move {operator.run_actor().await;})),
+            handler: AutoCancelTask(tokio::spawn(async move {
+                operator.run_actor().await;
+                std::mem::drop(permit);
+            })),
             inbound_customer,
             outbound_customer,
             inbound_courier,
@@ -83,7 +90,7 @@ impl WebsocketActor {
 
         let inbound_task = tokio::spawn(async move {
             while let Some(Ok(msg)) = ws_receiver.next().await {
-                info!("Received message from courier: {:?}", msg);
+                debug!("Received message from courier: {:?}", msg);
                 if let Message::Text(text) = msg {
                     inbound.send(text).await.unwrap();
                 }
@@ -93,7 +100,7 @@ impl WebsocketActor {
         let outbound_task = tokio::spawn(async move {
             while outbound.changed().await.is_ok() {
                 let msg = outbound.borrow().clone();
-                info!("Sending message to courier: {:?}", msg);
+                debug!("Sending message to courier: {:?}", msg);
                 ws_sender.send(Message::Text(msg)).await.unwrap();
             }
             ws_sender.send(Message::Close(None)).await.unwrap();

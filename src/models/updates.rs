@@ -1,6 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::{Serialize};
 use serde::de::DeserializeOwned;
-use crate::models::position::{Distance, Position};
 
 // Order States
 
