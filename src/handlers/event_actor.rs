@@ -64,8 +64,8 @@ impl EventActor {
                         }
                     }
                 }
-                Err(e) => {
-                    error!("Error receiving message: {:?}", e);
+                None => {
+                    info!("Channel closed");
                     return;
                 }
             }
