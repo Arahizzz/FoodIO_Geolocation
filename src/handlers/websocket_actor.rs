@@ -96,6 +96,7 @@ impl WebsocketActor {
                 info!("Sending message to courier: {:?}", msg);
                 ws_sender.send(Message::Text(msg)).await.unwrap();
             }
+            ws_sender.send(Message::Close(None)).await.unwrap();
         });
 
         Self {

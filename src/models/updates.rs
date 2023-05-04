@@ -8,13 +8,15 @@ pub struct OrderCreated {}
 
 pub struct OrderInTransit {}
 
-pub struct OrderCompleted {}
+pub struct OrderDelivered {}
 
 pub trait OrderState {
     type InboundCourierUpdate: DeserializeOwned;
     type OutboundCourierUpdate: Serialize + Send;
     type InboundCustomerUpdate: DeserializeOwned;
     type OutboundCustomerUpdate: Serialize + Send;
+
+    fn state_name() -> &'static str;
 }
 
 impl OrderState for OrderCreated {
@@ -22,6 +24,10 @@ impl OrderState for OrderCreated {
     type OutboundCourierUpdate = ();
     type InboundCustomerUpdate = ();
     type OutboundCustomerUpdate = order_created::OutboundCustomerUpdate;
+
+    fn state_name() -> &'static str {
+        "OrderCreated"
+    }
 }
 
 impl OrderState for OrderInTransit {
@@ -29,13 +35,21 @@ impl OrderState for OrderInTransit {
     type OutboundCourierUpdate = ();
     type InboundCustomerUpdate = ();
     type OutboundCustomerUpdate = order_in_transit::OutboundCustomerUpdate;
+
+    fn state_name() -> &'static str {
+        "OrderInTransit"
+    }
 }
 
-impl OrderState for OrderCompleted {
+impl OrderState for OrderDelivered {
     type InboundCourierUpdate = ();
     type OutboundCourierUpdate = order_completed::OutboundCourierUpdate;
     type InboundCustomerUpdate = order_completed::InboundCustomerUpdate;
     type OutboundCustomerUpdate = ();
+
+    fn state_name() -> &'static str {
+        "OrderDelivered"
+    }
 }
 
 pub mod order_created {
@@ -83,24 +97,3 @@ pub mod order_completed {
         DeliveryConfirmed
     }
 }
-
-// pub enum InboundCourierUpdate {
-//     TookOrder,
-//     InTransit(Position),
-//     Delivered,
-// }
-//
-// pub enum OutboundCustomerUpdate {
-//     InTransit(Position),
-//     OrderNearby(Distance),
-//     Delivered,
-// }
-//
-// pub enum InboundCustomerUpdate {
-//     DeliveryConfirmed,
-// }
-//
-// pub enum OutboundCourierUpdate {
-//     DeliveryConfirmed,
-// }
-//
