@@ -64,92 +64,41 @@ impl<S: OrderState> UpdateSerializer<S> for WebSocketUpdateHandler<S> {
     }
 }
 
+crate::impl_update_handler!(String, OrderCreated);
+crate::impl_update_handler!(String, OrderInTransit);
+crate::impl_update_handler!(String, OrderCompleted);
 
-#[async_trait]
-impl UpdateHandler<String> for WebSocketUpdateHandler<OrderCreated> {
-    async fn inbound_courier_update(&mut self, message: String) -> Vec<Command> {
-        match self.deserialize_courier_update(message) {
-            Ok(update) => self.processor.process_courier_update(update).await
-                .into_iter()
-                .map(|command| self.serialize_command(command))
-                .collect(),
-            Err(e) => {
-                error!("Error deserializing courier update: {}", e);
-                vec![]
+#[macro_export]
+macro_rules! impl_update_handler {
+    ($msg:ty, $state:ty) => {
+        #[async_trait]
+        impl UpdateHandler<$msg> for WebSocketUpdateHandler<$state> {
+            async fn inbound_courier_update(&mut self, message: String) -> Vec<Command> {
+                match self.deserialize_courier_update(message) {
+                    Ok(update) => self.processor.process_courier_update(update).await
+                        .into_iter()
+                        .map(|command| self.serialize_command(command))
+                        .collect(),
+                    Err(e) => {
+                        error!("Error deserializing courier update: {}", e);
+                        vec![]
+                    }
+                }
+            }
+
+            async fn inbound_customer_update(&mut self, message: String) -> Vec<Command> {
+                match self.deserialize_customer_update(message) {
+                    Ok(update) => self.processor.process_customer_update(update).await
+                        .into_iter()
+                        .map(|command| self.serialize_command(command))
+                        .collect(),
+                    Err(e) => {
+                        error!("Error deserializing courier update: {}", e);
+                        vec![]
+                    }
+                }
             }
         }
-    }
-
-    async fn inbound_customer_update(&mut self, message: String) -> Vec<Command> {
-        match self.deserialize_customer_update(message) {
-            Ok(update) => self.processor.process_customer_update(update).await
-                .into_iter()
-                .map(|command| self.serialize_command(command))
-                .collect(),
-            Err(e) => {
-                error!("Error deserializing courier update: {}", e);
-                vec![]
-            }
-        }
-    }
+    };
+    () => {};
 }
-
-#[async_trait]
-impl UpdateHandler<String> for WebSocketUpdateHandler<OrderInTransit> {
-    async fn inbound_courier_update(&mut self, message: String) -> Vec<Command> {
-        match self.deserialize_courier_update(message) {
-            Ok(update) => self.processor.process_courier_update(update).await
-                .into_iter()
-                .map(|command| self.serialize_command(command))
-                .collect(),
-            Err(e) => {
-                error!("Error deserializing courier update: {}", e);
-                vec![]
-            }
-        }
-    }
-
-    async fn inbound_customer_update(&mut self, message: String) -> Vec<Command> {
-        match self.deserialize_customer_update(message) {
-            Ok(update) => self.processor.process_customer_update(update).await
-                .into_iter()
-                .map(|command| self.serialize_command(command))
-                .collect(),
-            Err(e) => {
-                error!("Error deserializing courier update: {}", e);
-                vec![]
-            }
-        }
-    }
-}
-
-#[async_trait]
-impl UpdateHandler<String> for WebSocketUpdateHandler<OrderCompleted> {
-    async fn inbound_courier_update(&mut self, message: String) -> Vec<Command> {
-        match self.deserialize_courier_update(message) {
-            Ok(update) => self.processor.process_courier_update(update).await
-                .into_iter()
-                .map(|command| self.serialize_command(command))
-                .collect(),
-            Err(e) => {
-                error!("Error deserializing courier update: {}", e);
-                vec![]
-            }
-        }
-    }
-
-    async fn inbound_customer_update(&mut self, message: String) -> Vec<Command> {
-        match self.deserialize_customer_update(message) {
-            Ok(update) => self.processor.process_customer_update(update).await
-                .into_iter()
-                .map(|command| self.serialize_command(command))
-                .collect(),
-            Err(e) => {
-                error!("Error deserializing courier update: {}", e);
-                vec![]
-            }
-        }
-    }
-}
-
-
