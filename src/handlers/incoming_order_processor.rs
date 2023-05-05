@@ -106,8 +106,7 @@ impl IncomingOrderProcessor {
 
             producer.send(FutureRecord::to("geolocation_info")
                               .payload(serde_json::to_string(&links)?.as_bytes())
-                              .key(&order_id)
-                              .partition(0), Duration::from_secs(0)).await
+                              .key(&order_id), Duration::from_secs(0)).await
                 .map_err(|(e, _)| ErrorWithMessage::new
                     (format!("Kafka send error {}", e)))?;
         }
@@ -126,8 +125,7 @@ impl IncomingOrderProcessor {
 
         producer.send(FutureRecord::to("processed_orders")
                                   .payload(serde_json::to_string(&status).unwrap().as_bytes())
-                                  .key(&order_id)
-                                  .partition(0), Duration::from_secs(0)).await
+                                  .key(&order_id), Duration::from_secs(0)).await
             .map_err(|(e, _)| ErrorWithMessage::new
                 (format!("Kafka send error {}", e)))
             .map_or_else(|e| error!("{}", e), |_| {});

@@ -1,6 +1,7 @@
 use crate::handlers::events::TypedCommand;
 use crate::models::updates::{order_created, order_in_transit, OrderDelivered, OrderCreated, OrderInTransit, OrderState};
 use async_trait::async_trait;
+use crate::models::location_log::LocationLog;
 use crate::models::updates::order_completed::InboundCustomerUpdate;
 
 #[async_trait]
@@ -10,12 +11,12 @@ pub trait UpdateProcessor<S: OrderState> {
 }
 
 pub struct WebSocketUpdateProcessor<S: OrderState> {
-    marker: std::marker::PhantomData<S>,
+    state: S,
 }
 
 impl<S: OrderState> WebSocketUpdateProcessor<S> {
-    pub fn new() -> Self {
-        Self { marker: std::marker::PhantomData::<S>::default() }
+    pub fn new(state: S) -> Self {
+        Self { state }
     }
 }
 
@@ -39,6 +40,8 @@ impl UpdateProcessor<OrderInTransit> for WebSocketUpdateProcessor<OrderInTransit
                                     -> Vec<TypedCommand<OrderInTransit>> {
         match update {
             order_in_transit::InboundCourierUpdate::InTransit(pos) => {
+                self.state.logger.send((self.state.order_id.clone(), LocationLog::new(pos.lat, pos.lon)))
+                    .await.map_err(|_| "Failed to log location").unwrap();
                 vec![TypedCommand::SendCustomerNotify(
                     crate::models::updates::order_in_transit::OutboundCustomerUpdate::InTransit(pos)),
                      TypedCommand::ProcessedCourierUpdate]

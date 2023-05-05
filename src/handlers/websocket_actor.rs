@@ -1,12 +1,13 @@
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use tokio::sync::{mpsc, SemaphorePermit, watch};
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
 use tokio::task::JoinHandle;
 use tracing::log::{debug, info};
 use crate::handlers::event_actor::EventActor;
-use crate::handlers::location_request_processor::HANDLERS;
+use crate::handlers::incoming_order_processor::HANDLERS;
 
 struct AutoCancelTask<T>(pub JoinHandle<T>);
 
@@ -17,7 +18,7 @@ impl<T> Drop for AutoCancelTask<T> {
 }
 
 pub struct OrderSessionHandler {
-    order_id: String,
+    order_id: Arc<String>,
     customer_id: String,
     courier_id: String,
     customer: Option<AutoCancelTask<()>>,
@@ -37,7 +38,9 @@ impl OrderSessionHandler {
         let (outbound_customer_send, outbound_customer) = watch::channel(String::new());
         let (outbound_courier_send, outbound_courier) = watch::channel(String::new());
 
+        let order_id = Arc::new(order_id);
         let mut operator = EventActor::new(
+            order_id.clone(),
             inbound_customer_recv,
             inbound_courier_recv,
             outbound_customer_send,

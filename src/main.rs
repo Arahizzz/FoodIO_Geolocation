@@ -36,7 +36,8 @@ use tokio::sync::Semaphore;
 
 //allows to split the websocket stream into separate TX and RX branches
 use tracing::log::info;
-use crate::handlers::location_request_processor::{HANDLERS, HOST, IncomingOrderProcessor, PORT, SEMAPHORE};
+use crate::handlers::incoming_order_processor::{HANDLERS, HOST, IncomingOrderProcessor, PORT, SEMAPHORE};
+use crate::handlers::location_logger::LocationLogger;
 use crate::handlers::websocket_actor::OrderSessionHandler;
 
 #[tokio::main]
@@ -71,6 +72,7 @@ async fn main() {
             .unwrap_or(10_000))).unwrap();
     HANDLERS.set(DashMap::new()).map_err(|_| "Unable to init handlers map").unwrap();
 
+    tokio::spawn(LocationLogger::run_actor());
     tokio::spawn(IncomingOrderProcessor::run_actor());
 
     Server::bind(&"0.0.0.0:3000".parse().unwrap())

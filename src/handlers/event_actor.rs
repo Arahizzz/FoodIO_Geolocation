@@ -1,11 +1,14 @@
+use std::sync::Arc;
 use tokio::select;
 use tokio::sync::{mpsc, watch};
 use tracing::log::{debug, error, info};
 use crate::handlers::events::{Command, StateKind};
 use crate::handlers::handler::{UpdateHandler, WebSocketUpdateHandler};
-use crate::models::updates::{OrderDelivered, OrderCreated, OrderInTransit};
+use crate::handlers::location_logger::LOCATION_LOGGER;
+use crate::models::updates::{OrderDelivered, OrderCreated, OrderInTransit, OrderState};
 
 pub struct EventActor {
+    order_id: Arc<String>,
     inbound_customer: mpsc::Receiver<String>,
     inbound_courier: mpsc::Receiver<String>,
     outbound_customer: watch::Sender<String>,
@@ -15,16 +18,18 @@ pub struct EventActor {
 }
 
 impl EventActor {
-    pub fn new(inbound_customer: mpsc::Receiver<String>,
+    pub fn new(order_id: Arc<String>,
+               inbound_customer: mpsc::Receiver<String>,
                inbound_courier: mpsc::Receiver<String>,
                outbound_customer: watch::Sender<String>,
                outbound_courier: watch::Sender<String>) -> Self {
         Self {
+            order_id,
             inbound_customer,
             inbound_courier,
             outbound_customer,
             outbound_courier,
-            handler: Box::new(WebSocketUpdateHandler::<OrderCreated>::new()),
+            handler: Box::new(WebSocketUpdateHandler::<OrderCreated>::new(OrderCreated{})),
             current_state: StateKind::OrderCreated,
         }
     }
@@ -85,9 +90,12 @@ impl EventActor {
     fn transition(&mut self, tr: StateKind) {
         debug!("Transitioning to {:?}", tr);
         let new_handler: Box<dyn UpdateHandler<String> + Sync + Send> = match &tr {
-            StateKind::OrderCreated => Box::new(WebSocketUpdateHandler::<OrderCreated>::new()),
-            StateKind::OrderInTransit => Box::new(WebSocketUpdateHandler::<OrderInTransit>::new()),
-            StateKind::OrderDelivered => Box::new(WebSocketUpdateHandler::<OrderDelivered>::new()),
+            StateKind::OrderCreated => Box::new(WebSocketUpdateHandler::<OrderCreated>::new(OrderCreated { })),
+            StateKind::OrderInTransit => Box::new(WebSocketUpdateHandler::<OrderInTransit>::new(OrderInTransit{
+                order_id: self.order_id.clone(),
+                logger: LOCATION_LOGGER.get().unwrap().clone(),
+            })),
+            StateKind::OrderDelivered => Box::new(WebSocketUpdateHandler::<OrderDelivered>::new(OrderDelivered{})),
         };
         let transition_msg = serde_json::json!({
             "transition": tr.to_string()

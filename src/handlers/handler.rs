@@ -31,8 +31,8 @@ pub struct WebSocketUpdateHandler<S: OrderState> {
 }
 
 impl<S: OrderState> WebSocketUpdateHandler<S> {
-    pub fn new() -> Self {
-        Self { processor: WebSocketUpdateProcessor::<S>::new() }
+    pub fn new(state: S) -> Self {
+        Self { processor: WebSocketUpdateProcessor::<S>::new(state) }
     }
 
     fn serialize_command(&self, c: TypedCommand<S>) -> Command {

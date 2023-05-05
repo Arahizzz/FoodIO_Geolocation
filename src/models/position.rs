@@ -2,11 +2,11 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct Position {
-    lat: f64,
-    lon: f64
+    pub lat: f64,
+    pub lon: f64
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Distance {
-    km: f64
+    pub km: f64
 }

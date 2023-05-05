@@ -1,11 +1,16 @@
+use std::sync::Arc;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
+use crate::models::location_log::LocationLog;
 
 // Order States
 
 pub struct OrderCreated {}
 
-pub struct OrderInTransit {}
+pub struct OrderInTransit {
+    pub order_id: Arc<String>,
+    pub logger: tokio::sync::mpsc::Sender<(Arc<String>, LocationLog)>
+}
 
 pub struct OrderDelivered {}
 
