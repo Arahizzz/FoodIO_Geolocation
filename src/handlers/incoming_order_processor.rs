@@ -1,5 +1,6 @@
 use std::env;
 use std::time::Duration;
+use dashmap::DashMap;
 use rdkafka::{ClientConfig, Message};
 use rdkafka::config::RDKafkaLogLevel;
 use rdkafka::consumer::{Consumer, StreamConsumer};
@@ -16,10 +17,14 @@ use crate::models::error::ErrorWithMessage;
 
 use super::websocket_actor::OrderSessionHandler;
 
-pub static HANDLERS: once_cell::sync::OnceCell<dashmap::DashMap<String, OrderSessionHandler>> = once_cell::sync::OnceCell::new();
-pub static SEMAPHORE: once_cell::sync::OnceCell<Semaphore> = once_cell::sync::OnceCell::new();
-pub static HOST: once_cell::sync::OnceCell<String> = once_cell::sync::OnceCell::new();
-pub static PORT: once_cell::sync::OnceCell<String> = once_cell::sync::OnceCell::new();
+pub static HANDLERS: once_cell::sync::Lazy<dashmap::DashMap<String, OrderSessionHandler>> = once_cell::sync::Lazy::new(DashMap::new);
+pub static SEMAPHORE: once_cell::sync::Lazy<Semaphore> = once_cell::sync::Lazy::new(|| Semaphore::new(
+    env::var("MAX_CONCURRENT_ORDERS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(10_000)));
+pub static HOST: once_cell::sync::Lazy<String> = once_cell::sync::Lazy::new(|| env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string()));
+pub static PORT: once_cell::sync::Lazy<String> = once_cell::sync::Lazy::new(|| env::var("PORT").unwrap_or_else(|_| "3000".to_string()));
 
 pub struct IncomingOrderProcessor;
 
@@ -55,12 +60,12 @@ impl IncomingOrderProcessor {
             .expect("Producer creation error");
 
         loop {
-            let acq = match SEMAPHORE.get().unwrap().try_acquire() {
+            let acq = match SEMAPHORE.try_acquire() {
                 Ok(permit) => permit,
                 Err(TryAcquireError::NoPermits) => {
                     // Unsubscribe from topics to allow rebalancing
                     consumer.unsubscribe();
-                    let permit = SEMAPHORE.get().unwrap().acquire().await.unwrap();
+                    let permit = SEMAPHORE.acquire().await.unwrap();
                     consumer.subscribe(&INPUT_TOPICS).expect("Can't resubscribe");
                     permit
                 }
@@ -76,8 +81,6 @@ impl IncomingOrderProcessor {
     }
 
     async fn process_msg<'a>(msg: BorrowedMessage<'a>, producer: &'a FutureProducer, acq: SemaphorePermit<'static>) -> Result<(), Box<dyn std::error::Error>> {
-        let host = HOST.get().unwrap();
-        let port = PORT.get().unwrap();
         if let Ok(order_info) = serde_json::from_str::<OrderInfo>(
             msg.payload_view::<str>().ok_or(ErrorWithMessage::new("Message read failure".to_string()))??) {
             let order_id = order_info.order_id.clone();
@@ -86,8 +89,8 @@ impl IncomingOrderProcessor {
 
             let links = GeolocationLinks {
                 order_id: order_id.clone(),
-                customer: format!("ws://{}:{}/ws/{}/customer", host, port, order_id),
-                courier: format!("ws://{}:{}/ws/{}/courier", host, port, order_id),
+                customer: format!("ws://{}:{}/ws/{}/customer", HOST.as_str(), PORT.as_str(), order_id),
+                courier: format!("ws://{}:{}/ws/{}/courier", HOST.as_str(), PORT.as_str(), order_id),
             };
 
 
@@ -102,7 +105,7 @@ impl IncomingOrderProcessor {
 
             let session_handler = OrderSessionHandler::new
                 (order_id.clone(), customer_id.clone(), courier_id.clone(), handle);
-            HANDLERS.get().unwrap().insert(order_id.clone(), session_handler);
+            HANDLERS.insert(order_id.clone(), session_handler);
 
             producer.send(FutureRecord::to("geolocation_info")
                               .payload(serde_json::to_string(&links)?.as_bytes())
@@ -116,7 +119,7 @@ impl IncomingOrderProcessor {
 
     async fn on_order_finish(acq: SemaphorePermit<'_>, order_id: String, producer: FutureProducer) {
         std::mem::drop(acq);
-        HANDLERS.get().unwrap().remove(&order_id);
+        HANDLERS.remove(&order_id);
 
         let status = json!({
                     "order_id": order_id,
@@ -124,8 +127,8 @@ impl IncomingOrderProcessor {
                 });
 
         producer.send(FutureRecord::to("processed_orders")
-                                  .payload(serde_json::to_string(&status).unwrap().as_bytes())
-                                  .key(&order_id), Duration::from_secs(0)).await
+                          .payload(serde_json::to_string(&status).unwrap().as_bytes())
+                          .key(&order_id), Duration::from_secs(0)).await
             .map_err(|(e, _)| ErrorWithMessage::new
                 (format!("Kafka send error {}", e)))
             .map_or_else(|e| error!("{}", e), |_| {});

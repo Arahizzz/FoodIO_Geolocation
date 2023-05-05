@@ -18,6 +18,7 @@
 
 mod models;
 mod handlers;
+mod jwt_auth;
 
 use axum::{extract::ws::{WebSocketUpgrade}, response::IntoResponse, routing::get, Router, TypedHeader, Server};
 
@@ -31,6 +32,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 //allows to extract the IP of connecting user
 use axum::extract::connect_info::ConnectInfo;
 use axum::extract::Path;
+use axum::http::StatusCode;
 use dashmap::DashMap;
 use tokio::sync::Semaphore;
 
@@ -58,19 +60,11 @@ async fn main() {
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::default().include_headers(true)),
-        );
+        )
+        .layer(axum::middleware::from_fn(jwt_auth::auth));
 
     // run it with hyper
-    HOST.set(env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string())).unwrap();
-    PORT.set(env::var("PORT").unwrap_or_else(|_| "3000".to_string())).unwrap();
-    info!("listening on {}:{}", HOST.get().unwrap(), PORT.get().unwrap());
-
-    SEMAPHORE.set(Semaphore::new(
-        env::var("MAX_CONCURRENT_ORDERS")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(10_000))).unwrap();
-    HANDLERS.set(DashMap::new()).map_err(|_| "Unable to init handlers map").unwrap();
+    info!("listening on {}:{}", HOST.as_str(), PORT.as_str());
 
     tokio::spawn(LocationLogger::run_actor());
     tokio::spawn(IncomingOrderProcessor::run_actor());
@@ -87,8 +81,11 @@ async fn courier_ws_handler(
     order_id: Path<String>,
     ConnectInfo(_addr): ConnectInfo<SocketAddr>,
 ) -> impl IntoResponse {
+    if !HANDLERS.contains_key(order_id.as_str()) {
+        return (StatusCode::NOT_FOUND, "Order not found").into_response();
+    }
     ws.on_upgrade(move |socket| {
-        HANDLERS.get().unwrap()
+        HANDLERS
             .get_mut(order_id.as_str())
             .unwrap()
             .connect_courier(socket);
@@ -102,11 +99,15 @@ async fn customer_ws_handler(
     order_id: Path<String>,
     ConnectInfo(_addr): ConnectInfo<SocketAddr>,
 ) -> impl IntoResponse {
+    if !HANDLERS.contains_key(order_id.as_str()) {
+        return (StatusCode::NOT_FOUND, "Order not found").into_response();
+    }
     ws.on_upgrade(move |socket| {
-        HANDLERS.get().unwrap()
+        HANDLERS
             .get_mut(order_id.as_str())
             .unwrap()
             .connect_customer(socket);
         futures_util::future::ready(())
     })
 }
+
