@@ -1,17 +1,42 @@
 version: '3.9'
-services:
-  geolocation:
+x-geolocation_service: &geolocation_service
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      - RUST_LOG=info
-      - REDPANDA_BROKER=redpanda-0:9092
     networks:
       - default
       - redpanda_network
+    depends_on:
+      - redpanda-0
+x-geolocation_service_environment: &geolocation_service_env
+  RUST_LOG: info
+  REDPANDA_BROKER: redpanda-0:9092
+  HOST: localhost
+  MAX_CONCURRENT_ORDERS: 10000
+
+services:
+  geolocation-0:
+    <<: *geolocation_service
+    ports:
+      - "3000:3000"
+    environment:
+      <<: *geolocation_service_env
+      PORT: 3000
+  geolocation-1:
+    <<: *geolocation_service
+    ports:
+      - "3001:3000"
+    environment:
+      <<: *geolocation_service_env
+      PORT: 3001
+  geolocation-2:
+    <<: *geolocation_service
+    ports:
+      - "3002:3000"
+    environment:
+      <<: *geolocation_service_env
+      PORT: 3002
+
   redpanda-0:
     command:
       - redpanda

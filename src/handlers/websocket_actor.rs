@@ -1,9 +1,12 @@
+use std::future::Future;
+use std::pin::Pin;
 use tokio::sync::{mpsc, SemaphorePermit, watch};
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
 use tokio::task::JoinHandle;
 use tracing::log::{debug, info};
 use crate::handlers::event_actor::EventActor;
+use crate::handlers::location_request_processor::HANDLERS;
 
 struct AutoCancelTask<T>(pub JoinHandle<T>);
 
@@ -19,7 +22,7 @@ pub struct OrderSessionHandler {
     courier_id: String,
     customer: Option<AutoCancelTask<()>>,
     courier: Option<AutoCancelTask<()>>,
-    handler: AutoCancelTask<()>,
+    handle: AutoCancelTask<()>,
     // update_handler: UpdateHandlerActor,
     inbound_customer: mpsc::Sender<String>,
     inbound_courier: mpsc::Sender<String>,
@@ -28,7 +31,7 @@ pub struct OrderSessionHandler {
 }
 
 impl OrderSessionHandler {
-    pub fn new(order_id: String, customer_id: String, courier_id: String, permit: SemaphorePermit<'static>) -> Self {
+    pub fn new(order_id: String, customer_id: String, courier_id: String, end: tokio::sync::oneshot::Sender<()>) -> Self {
         let (inbound_customer, inbound_customer_recv) = mpsc::channel(8);
         let (inbound_courier, inbound_courier_recv) = mpsc::channel(8);
         let (outbound_customer_send, outbound_customer) = watch::channel(String::new());
@@ -41,15 +44,15 @@ impl OrderSessionHandler {
             outbound_courier_send);
 
         Self {
-            order_id,
+            order_id: order_id.clone(),
             customer_id,
             courier_id,
             customer: None,
             courier: None,
             // update_handler: operator,
-            handler: AutoCancelTask(tokio::spawn(async move {
+            handle: AutoCancelTask(tokio::spawn(async move {
                 operator.run_actor().await;
-                std::mem::drop(permit);
+                end.send(()).ok();
             })),
             inbound_customer,
             outbound_customer,
@@ -57,6 +60,7 @@ impl OrderSessionHandler {
             outbound_courier,
         }
     }
+
 
     pub fn connect_customer(&mut self, ws: WebSocket) {
         let inbound_customer = self.inbound_customer.clone();

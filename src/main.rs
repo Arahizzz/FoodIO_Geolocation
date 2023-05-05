@@ -36,7 +36,7 @@ use tokio::sync::Semaphore;
 
 //allows to split the websocket stream into separate TX and RX branches
 use tracing::log::info;
-use crate::handlers::location_request_processor::{HANDLERS, IncomingOrderProcessor, SEMAPHORE};
+use crate::handlers::location_request_processor::{HANDLERS, HOST, IncomingOrderProcessor, PORT, SEMAPHORE};
 use crate::handlers::websocket_actor::OrderSessionHandler;
 
 #[tokio::main]
@@ -60,7 +60,9 @@ async fn main() {
         );
 
     // run it with hyper
-    info!("listening on {}", "0.0.0.0:3000");
+    HOST.set(env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string())).unwrap();
+    PORT.set(env::var("PORT").unwrap_or_else(|_| "3000".to_string())).unwrap();
+    info!("listening on {}:{}", HOST.get().unwrap(), PORT.get().unwrap());
 
     SEMAPHORE.set(Semaphore::new(
         env::var("MAX_CONCURRENT_ORDERS")
